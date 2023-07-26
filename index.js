@@ -1,6 +1,9 @@
 const express = require('express');
 const morgan = require('morgan');
 const cors = require('cors');
+require('dotenv').config();
+
+const Person = require('./models/person')
 
 const app = express();
 
@@ -17,82 +20,60 @@ app.use((request, response, next) => {
     }
 });
 
-let persons = [
-    {
-        "id": 1,
-        "name": "Arto Hellas",
-        "number": "040-123456"
-    },
-    {
-        "id": 2,
-        "name": "Ada Lovelace",
-        "number": "39-44-5323523"
-    },
-    {
-        "id": 3,
-        "name": "Dan Abramov",
-        "number": "12-43-234345"
-    },
-    {
-        "id": 4,
-        "name": "Mary Poppendieck",
-        "number": "39-23-6423122"
-    }
-];
-
 app.get('/api/persons', (request, response) => {
-    response.json(persons)
+    Person.find({}).then(persons => {
+        response.json(persons)
+    })
 });
 
-app.get('/info', (request, response) => {
-    response.send(`
+app.get('/info', async (request, response) => {
+    try {
+        const personCount = await Person.collection.countDocuments();
+
+        response.send(`
     <div>
-        <p>Phonebook has info for ${persons.length} people</p>
+        <p>Phonebook has info for ${personCount} people</p>
         <p>${Date()}</p>
     </div>
     `)
-});
-
-app.get('/api/persons/:id', (request, response) => {
-    const id = Number(request.params.id)
-    const person = persons.find(person => person.id === id)
-    if (person) {
-        response.json(person)
-    } else {
-        response.status(404).end()
+    } catch (error) {
+        response.status(500).send("Internal Server Error");
     }
 });
 
-app.delete('/api/persons/:id', (request, response) => {
-    const id = Number(request.params.id)
-    persons = persons.filter(person => person.id !== id)
-    response.status(204).end()
+app.get('/api/persons/:id', (request, response) => {
+    Person.findById(request.params.id).then(person => {
+        response.json(person)
+    })
+});
+
+app.delete('/api/persons/:id', (request, response, next) => {
+    Person.findByIdAndRemove(request.params.id)
+        .then(result => {
+            response.status(204).end()
+        })
+        .catch(error => next(error))
 });
 
 app.post('/api/persons', (request, response) => {
     const body = request.body
 
-    const person = {
-        id: Math.random(),
-        name: body.name,
-        number: body.number
+    if (body.content === undefined) {
+        return response.status(400).json({
+            error: 'Content missing'
+        })
     }
+        const person = new Person({
+            name: body.name,
+            number: body.number
+        })
 
-    if (!body.name || !body.number) {
-        return response.status(400).json({
-            error: 'name or number is missing'
+        person.save().then(savedPerson => {
+            response.json(savedPerson)
         })
-    } else if (persons.some(p => p.name === person.name || p.number === person.number)) {
-        return response.status(400).json({
-            error: 'The name or number already exists in the phonebook'
-        })
-    } else {
-        persons = persons.concat(person)
-        response.json(person)
-    }
 });
 
-const PORT = process.env.PORT || 3001
+const PORT = process.env.PORT
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)
 })
